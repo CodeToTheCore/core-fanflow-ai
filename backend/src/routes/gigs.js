@@ -2,259 +2,280 @@ const express = require('express')
 const router = express.Router()
 const auth = require('../middleware/auth')
 const { query } = require('../db')
-const gigSearchService = require('../services/gigSearchService')
+const { searchLinkedInJobs, runDailyMonitor } = require('../services/linkedinAgent')
 const emailService = require('../services/emailService')
-const openaiService = require('../services/openaiService')
- 
-// GET /api/gigs/search — search for gigs from all sources
+
+// GET /api/gigs/search
 router.get('/search', auth, async (req, res, next) => {
   try {
-    const { genre, location, type, minPay } = req.query
- 
-    const gigs = await gigSearchService.searchAllGigs({
-      genre: genre || req.artist.genre || 'R&B',
-      location: location || req.artist.location || 'New York',
-      type,
-    })
- 
-    // Filter by min pay if specified
-    const filtered = minPay
-      ? gigs.filter((g) => (g.pay_amount || 0) >= parseFloat(minPay))
-      : gigs
- 
-    // Store in DB for tracking
-    for (const gig of filtered) {
-      try {
+    const { type, minPay, refresh } = req.query
+
+    // If refresh requested or DB is empty, fetch live data
+    const { rows: dbGigs } = await query(
+      `SELECT * FROM gigs WHERE status='open' ORDER BY match_score DESC LIMIT 30`
+    )
+
+    if (dbGigs.length === 0 || refresh === 'true') {
+      console.log('Fetching fresh gigs from LinkedIn agent...')
+      const liveGigs = await runDailyMonitor({
+        name: req.artist.name,
+        genre: req.artist.genre || 'R&B',
+        location: req.artist.location || 'New York',
+      })
+
+      // Save to DB
+      for (const gig of liveGigs) {
         await query(
-          `INSERT INTO gigs (type, title, venue, description, pay, pay_amount, location, genre, deadline, contact_email, apply_url, source, match_score)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+          `INSERT INTO gigs (type, title, venue, description, pay, pay_amount, location, apply_url, source, match_score, status, deadline)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'open',$11)
            ON CONFLICT DO NOTHING`,
-          [
-            gig.type, gig.title, gig.venue, gig.description,
-            gig.pay, gig.pay_amount, gig.location, gig.genre,
-            gig.deadline, gig.contact_email, gig.apply_url, gig.source, gig.match_score,
-          ]
-        ).catch(() => {}) // ignore duplicates
-      } catch {}
+          [gig.type, gig.title, gig.venue, gig.description, gig.pay,
+           gig.pay_amount, gig.location, gig.apply_url, gig.source,
+           gig.match_score, gig.deadline]
+        ).catch(() => {})
+      }
+
+      let result = liveGigs
+      if (type) result = result.filter(g => g.type === type)
+      if (minPay) result = result.filter(g => (g.pay_amount || 0) >= parseFloat(minPay))
+      return res.json(result)
     }
- 
-    res.json(filtered)
+
+    let result = dbGigs
+    if (type) result = result.filter(g => g.type === type)
+    if (minPay) result = result.filter(g => (g.pay_amount || 0) >= parseFloat(minPay))
+    res.json(result)
   } catch (err) {
     next(err)
   }
 })
- 
-// GET /api/gigs/recommendations — AI-matched gigs for this artist
+
+// POST /api/gigs/trigger-scan — manually trigger the AI agent
+router.post('/trigger-scan', auth, async (req, res, next) => {
+  try {
+    const opportunities = await runDailyMonitor({
+      name: req.artist.name,
+      genre: req.artist.genre || 'R&B',
+      location: req.artist.location || 'New York',
+    })
+
+    for (const opp of opportunities) {
+      await query(
+        `INSERT INTO gigs (type, title, venue, description, pay, pay_amount, location, apply_url, source, match_score, status, deadline)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'open',$11)
+         ON CONFLICT DO NOTHING`,
+        [opp.type, opp.title, opp.venue, opp.description, opp.pay,
+         opp.pay_amount, opp.location, opp.apply_url, opp.source,
+         opp.match_score, opp.deadline]
+      ).catch(() => {})
+    }
+
+    res.json({
+      found: opportunities.length,
+      topMatches: opportunities.slice(0, 3),
+      message: `AI agent scanned LinkedIn and found ${opportunities.length} opportunities`,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// GET /api/gigs/recommendations
 router.get('/recommendations', auth, async (req, res, next) => {
   try {
-    const { rows: gigs } = await query(
-      `SELECT * FROM gigs WHERE status = 'open' ORDER BY match_score DESC LIMIT 10`
+    const { rows } = await query(
+      `SELECT * FROM gigs WHERE status='open' AND match_score >= 80
+       ORDER BY match_score DESC LIMIT 6`
     )
- 
-    if (!gigs.length) {
-      // Return live search results
-      const live = await gigSearchService.searchAllGigs({
-        genre: req.artist.genre || 'R&B',
-      })
+    if (!rows.length) {
+      const live = await runDailyMonitor({ name: req.artist.name, genre: req.artist.genre })
       return res.json(live.slice(0, 6))
     }
- 
-    res.json(gigs)
-  } catch (err) {
-    next(err)
-  }
+    res.json(rows)
+  } catch (err) { next(err) }
 })
- 
-// GET /api/gigs/:id — get single gig
-router.get('/:id', auth, async (req, res, next) => {
+
+// GET /api/gigs/applications
+router.get('/applications', auth, async (req, res, next) => {
   try {
-    const { rows } = await query('SELECT * FROM gigs WHERE id = $1', [req.params.id])
-    if (!rows.length) return res.status(404).json({ error: 'Gig not found' })
-    res.json(rows[0])
-  } catch (err) {
-    next(err)
-  }
+    const { rows } = await query(
+      `SELECT a.*, g.title as gig_title, g.venue, g.pay, g.type as gig_type
+       FROM applications a LEFT JOIN gigs g ON a.gig_id = g.id
+       WHERE a.artist_id = $1 ORDER BY a.applied_at DESC`,
+      [req.artist.id]
+    )
+    res.json(rows.length ? rows : [
+      { id: 1, gig_title: 'R&B Night Headliner', venue: 'The Loft NYC', pay: '$800', status: 'sent', gig_type: 'venue' },
+      { id: 2, gig_title: 'Netflix Drama Series', venue: 'Netflix', pay: '$2,500', status: 'viewed', gig_type: 'sync' },
+    ])
+  } catch (err) { next(err) }
 })
- 
-// POST /api/gigs/:id/apply — auto-apply to a single gig
+
+// POST /api/gigs/:id/apply — apply with AI cover letter + email
 router.post('/:id/apply', auth, async (req, res, next) => {
   try {
-    const { resumeId } = req.body
     const gigId = req.params.id
- 
-    // Get gig details
+    const { coverLetter } = req.body
+
     const { rows: gigRows } = await query('SELECT * FROM gigs WHERE id = $1', [gigId])
     const gig = gigRows[0]
- 
-    if (!gig && gigId !== 'demo') {
-      return res.status(404).json({ error: 'Gig not found' })
-    }
- 
-    // Get or generate resume
+    if (!gig) return res.status(404).json({ error: 'Gig not found' })
+
+    // Get artist resume
     const { rows: resumeRows } = await query(
       'SELECT * FROM resumes WHERE artist_id = $1 AND is_active = true LIMIT 1',
       [req.artist.id]
     )
- 
-    // Generate AI cover letter
-    let coverLetter = req.body.coverLetter
-    if (!coverLetter) {
-      try {
-        const prompt = `Write a professional 3-paragraph cover letter from artist "${req.artist.name}" for this opportunity:
-Title: ${gig?.title || 'Music Performance'}
-Venue: ${gig?.venue || 'Venue'}
-Description: ${gig?.description || ''}
-Artist genre: ${req.artist.genre || 'R&B'}
-Artist followers: 15,200
-Keep it professional but authentic.`
-        coverLetter = await openaiService.complete(prompt, 400)
-      } catch {
-        coverLetter = `Dear ${gig?.venue || 'Team'},\n\nI am ${req.artist.name}, an independent ${req.artist.genre || 'R&B'} artist with 15,000+ engaged followers. I would love to perform at ${gig?.title || 'your venue'}.\n\nWith respect,\n${req.artist.name}`
-      }
-    }
- 
+
+    const letter = coverLetter || `Dear ${gig.venue} Team,
+
+My name is ${req.artist.name}, an independent ${req.artist.genre || 'R&B'} artist and producer based in ${req.artist.location || 'New York'} with a highly engaged following of 15,000+ fans and a 4.8% engagement rate.
+
+I am applying for the "${gig.title}" opportunity. My music blends authentic storytelling with modern production — built independently, for real audiences who genuinely connect with the work.
+
+I would love the opportunity to bring that energy to ${gig.venue}. Please find my artist resume and portfolio attached.
+
+With respect,
+${req.artist.name}`
+
     // Send application email if contact exists
-    if (gig?.contact_email) {
+    if (gig.contact_email) {
       await emailService.sendApplication({
         to: gig.contact_email,
         artistName: req.artist.name,
         gigTitle: gig.title,
-        coverLetter,
+        coverLetter: letter,
         resumeData: resumeRows[0]?.content,
-      }).catch(err => console.error('Email send error:', err.message))
+      }).catch(err => console.error('Email error:', err.message))
     }
- 
-    // Save application record
+
+    // Also apply via URL if available (log for now)
+    if (gig.apply_url) {
+      console.log(`Application URL for manual follow-up: ${gig.apply_url}`)
+    }
+
+    // Save to applications
     const { rows: appRows } = await query(
       `INSERT INTO applications (artist_id, gig_id, resume_id, cover_letter, status)
-       VALUES ($1, $2, $3, $4, 'sent')
-       RETURNING *`,
-      [req.artist.id, gigId === 'demo' ? null : gigId, resumeId || null, coverLetter]
+       VALUES ($1,$2,$3,$4,'sent') RETURNING *`,
+      [req.artist.id, gigId, resumeRows[0]?.id || null, letter]
     ).catch(() => ({ rows: [{ id: Date.now(), status: 'sent' }] }))
- 
+
     res.json({
       success: true,
       application: appRows[0],
-      message: `Application submitted to ${gig?.venue || 'venue'}`,
-      coverLetter,
+      coverLetter: letter,
+      emailSent: !!gig.contact_email,
+      applyUrl: gig.apply_url,
+      message: `Applied to "${gig.title}" at ${gig.venue}`,
     })
-  } catch (err) {
-    next(err)
-  }
+  } catch (err) { next(err) }
 })
- 
-// POST /api/gigs/bulk-apply — apply to multiple gigs at once
+
+// POST /api/gigs/bulk-apply
 router.post('/bulk-apply', auth, async (req, res, next) => {
   try {
-    const { gigIds, resumeId } = req.body
+    const { gigIds } = req.body
     if (!gigIds?.length) return res.status(400).json({ error: 'No gig IDs provided' })
- 
+
     const results = []
     for (const gigId of gigIds) {
       try {
-        const { rows: gigRows } = await query('SELECT * FROM gigs WHERE id = $1', [gigId])
-        const gig = gigRows[0]
+        const { rows } = await query('SELECT * FROM gigs WHERE id = $1', [gigId])
+        const gig = rows[0]
         if (!gig) continue
- 
-        // Quick cover letter per gig
-        const coverLetter = `Dear ${gig.venue} Team,\n\nMy name is ${req.artist.name}. I'm an independent ${req.artist.genre || 'R&B'} artist with 15,000+ engaged followers and I'm applying for the ${gig.title} opportunity.\n\nPlease find my artist resume and portfolio attached.\n\nWith respect,\n${req.artist.name}`
- 
+
+        const letter = `Dear ${gig.venue} Team,\n\nMy name is ${req.artist.name}. I'm applying for "${gig.title}".\n\nWith respect,\n${req.artist.name}`
+
         if (gig.contact_email) {
           await emailService.sendApplication({
             to: gig.contact_email,
             artistName: req.artist.name,
             gigTitle: gig.title,
-            coverLetter,
+            coverLetter: letter,
           }).catch(() => {})
         }
- 
+
         await query(
           `INSERT INTO applications (artist_id, gig_id, cover_letter, status)
-           VALUES ($1, $2, $3, 'sent') ON CONFLICT DO NOTHING`,
-          [req.artist.id, gigId, coverLetter]
+           VALUES ($1,$2,$3,'sent') ON CONFLICT DO NOTHING`,
+          [req.artist.id, gigId, letter]
         ).catch(() => {})
- 
-        results.push({ gigId, status: 'sent', venue: gig.venue, title: gig.title })
+
+        results.push({ gigId, status: 'sent', title: gig.title, venue: gig.venue })
       } catch (e) {
-        results.push({ gigId, status: 'error', error: e.message })
+        results.push({ gigId, status: 'error' })
       }
     }
- 
+
     res.json({ applied: results.filter(r => r.status === 'sent').length, results })
-  } catch (err) {
-    next(err)
-  }
+  } catch (err) { next(err) }
 })
- 
-// GET /api/gigs/applications — get all applications for this artist
-router.get('/applications', auth, async (req, res, next) => {
-  try {
-    const { status } = req.query
- 
-    let whereClause = 'WHERE a.artist_id = $1'
-    const params = [req.artist.id]
- 
-    if (status && status !== 'all') {
-      params.push(status)
-      whereClause += ` AND a.status = $${params.length}`
-    }
- 
-    const { rows } = await query(
-      `SELECT a.*, g.title as gig_title, g.venue, g.pay, g.type as gig_type
-       FROM applications a
-       LEFT JOIN gigs g ON a.gig_id = g.id
-       ${whereClause}
-       ORDER BY a.applied_at DESC`,
-      params
-    )
- 
-    // Return mock if empty
-    if (!rows.length) {
-      return res.json([
-        { id: 1, gig_title: 'R&B Night Headliner', venue: 'The Loft NYC', pay: '$800', status: 'sent', applied_at: new Date(Date.now() - 2 * 86400000), gig_type: 'venue' },
-        { id: 2, gig_title: 'Netflix Drama Series', venue: 'Netflix', pay: '$2,500', status: 'viewed', applied_at: new Date(Date.now() - 5 * 86400000), gig_type: 'sync' },
-      ])
-    }
- 
-    res.json(rows)
-  } catch (err) {
-    next(err)
-  }
-})
- 
-// GET /api/gigs/venues — search venues specifically
+
 router.get('/venues', auth, async (req, res, next) => {
   try {
-    const { genre, location, minPay } = req.query
-    const venues = await gigSearchService.searchVenueGigs(genre, location)
-    const filtered = minPay ? venues.filter(v => v.pay_amount >= parseFloat(minPay)) : venues
-    res.json(filtered)
-  } catch (err) {
-    next(err)
-  }
+    const { rows } = await query(`SELECT * FROM gigs WHERE type='venue' AND status='open' ORDER BY match_score DESC`)
+    res.json(rows)
+  } catch (err) { next(err) }
 })
- 
-// GET /api/gigs/sync — search sync deals
+
 router.get('/sync', auth, async (req, res, next) => {
   try {
-    const { genre } = req.query
-    const deals = await gigSearchService.searchSyncDeals(genre || req.artist.genre)
-    res.json(deals)
+    const { rows } = await query(`SELECT * FROM gigs WHERE type='sync' AND status='open' ORDER BY match_score DESC`)
+    res.json(rows)
+  } catch (err) { next(err) }
+})
+
+// GET /api/gigs/sync-matches — sync opportunities ranked against this artist,
+// shaped for the SyncMatcher panel. Genre hits are boosted over the stored
+// match_score so a same-genre placement outranks a generic high scorer.
+router.get('/sync-matches', auth, async (req, res, next) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 5, 25)
+    const genre = req.artist.genre || ''
+
+    const { rows } = await query(
+      `SELECT title, venue, genre, pay, pay_amount, match_score,
+              COALESCE(match_score, 0)
+                + CASE WHEN $1 <> '' AND genre ILIKE '%' || $1 || '%' THEN 25 ELSE 0 END
+                AS rank_score
+         FROM gigs
+        WHERE status = 'open'
+          AND (type = 'sync' OR title ILIKE '%sync%' OR title ILIKE '%score%'
+               OR title ILIKE '%soundtrack%' OR description ILIKE '%licensing%')
+        ORDER BY rank_score DESC NULLS LAST
+        LIMIT $2`,
+      [genre, limit]
+    )
+
+    res.json({
+      matches: rows.map((r) => ({
+        project: r.title,
+        category: r.genre || r.venue || 'Sync',
+        budget: r.pay || (r.pay_amount ? `$${Number(r.pay_amount).toLocaleString()}` : 'Undisclosed'),
+        match: Math.min(Number(r.rank_score) || 0, 100),
+      })),
+    })
   } catch (err) {
     next(err)
   }
 })
- 
-// POST /api/gigs/linkedin — search LinkedIn opportunities
+
 router.post('/linkedin', auth, async (req, res, next) => {
   try {
     const { keywords } = req.body
-    const results = await gigSearchService.searchLinkedIn(keywords || [req.artist.genre, 'artist'])
+    const keyword = (keywords || [req.artist.genre, 'artist']).join(' ')
+    const results = await searchLinkedInJobs(keyword)
     res.json(results)
-  } catch (err) {
-    next(err)
-  }
+  } catch (err) { next(err) }
 })
- 
-module.exports = router
- 
+
+router.get('/:id', auth, async (req, res, next) => {
+  try {
+    const { rows } = await query('SELECT * FROM gigs WHERE id = $1', [req.params.id])
+    if (!rows.length) return res.status(404).json({ error: 'Gig not found' })
+    res.json(rows[0])
+  } catch (err) { next(err) }
+})
+
+module.exports = router;

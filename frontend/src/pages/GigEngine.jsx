@@ -15,6 +15,7 @@ import { Button, Badge, Modal } from '../components/ui/Button'
 import { gigService } from '../services/gigService'
 import { resumeService } from '../services/resumeService'
 import { aiService } from '../services/aiService'
+import SyncMatcher from '../components/SyncMatcher'
 import toast from 'react-hot-toast'
  
 const mockGigs = [
@@ -351,6 +352,11 @@ JP The Producer`
           </div>
         </div>
       </Modal>
+
+      {/* Sync licensing matches, folded in from the v2 build */}
+      <div className="mt-8">
+        <SyncMatcher />
+      </div>
     </div>
   )
 }

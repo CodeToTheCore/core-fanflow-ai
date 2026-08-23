@@ -18,6 +18,8 @@ export default {
           white: '#F0F0FF',
           muted: '#6B6B8A',
         },
+        // Alias used by the components folded in from the v2 build.
+        'card-bg': '#1A1A26',
       },
       fontFamily: {
         display: ['Syne', 'sans-serif'],

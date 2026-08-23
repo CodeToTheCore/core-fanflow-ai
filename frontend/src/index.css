@@ -1,3 +1,14 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Always-on card halos used by the panels folded in from the v2 build. The
+   .orange-glow / .purple-glow in styles/globals.css are hover treatments. */
+@layer utilities {
+  .glow-orange {
+    box-shadow: 0 0 30px rgba(255, 107, 0, 0.18);
+  }
+  .glow-purple {
+    box-shadow: 0 0 30px rgba(123, 47, 190, 0.22);
+  }
+}

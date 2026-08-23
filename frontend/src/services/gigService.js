@@ -56,5 +56,11 @@ export const gigService = {
     const { data } = await api.get('/gigs/sync', { params: { genre } })
     return data
   },
+
+  // Sync opportunities ranked against this artist's genre
+  async getSyncMatches(limit) {
+    const { data } = await api.get('/gigs/sync-matches', { params: { limit } })
+    return data
+  },
 }
  

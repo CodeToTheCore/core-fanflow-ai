@@ -5,6 +5,8 @@ import { Button, Badge } from '../components/ui/Button'
 import { fanService } from '../services/fanService'
 import { aiService } from '../services/aiService'
 import { useArtistStore } from '../store/ArtistStore'
+import TrendRadar from '../components/TrendRadar'
+import Leaderboard from '../components/Leaderboard'
 import { useNavigate } from 'react-router-dom'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
@@ -47,6 +49,9 @@ export default function Dashboard() {
     }).catch(() => {})
   }, [])
  
+
+
+  
   async function generateQuickCampaign() {
     setLoadingAI(true)
     try {
@@ -273,6 +278,12 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Trend Radar + global rankings, folded in from the v2 build */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <TrendRadar />
+        <Leaderboard />
       </div>
     </div>
   )
