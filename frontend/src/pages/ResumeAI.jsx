@@ -292,9 +292,9 @@ export default function ResumeAI() {
               Social Proof
             </div>
             {[
-              { icon: Twitter, label: resume.social.twitter, color: '#1DA1F2', bg: 'rgba(29,161,242,0.1)' },
-              { icon: Instagram, label: resume.social.instagram, color: '#E1306C', bg: 'rgba(225,48,108,0.1)' },
-              { icon: Linkedin, label: 'LinkedIn Profile', color: '#0077B5', bg: 'rgba(0,119,181,0.1)' },
+              { icon: FaTwitter, label: resume.social.twitter, color: '#1DA1F2', bg: 'rgba(29,161,242,0.1)' },
+              { icon: FaInstagram, label: resume.social.instagram, color: '#E1306C', bg: 'rgba(225,48,108,0.1)' },
+              { icon: FaLinkedin, label: 'LinkedIn Profile', color: '#0077B5', bg: 'rgba(0,119,181,0.1)' },
             ].map(({ icon: Icon, label, color, bg }) => (
               <div
                 key={label}
