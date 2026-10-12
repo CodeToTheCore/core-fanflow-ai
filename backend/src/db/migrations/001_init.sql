@@ -108,3 +108,99 @@ CREATE INDEX IF NOT EXISTS idx_applications_artist_id ON applications(artist_id)
 CREATE INDEX IF NOT EXISTS idx_gigs_status ON gigs(status);
 CREATE INDEX IF NOT EXISTS idx_gigs_match ON gigs(match_score DESC);
 CREATE INDEX IF NOT EXISTS idx_campaigns_artist_id ON campaigns(artist_id);
+
+-- Notifications table (for AI agent alerts)
+CREATE TABLE IF NOT EXISTS notifications (
+  id          SERIAL PRIMARY KEY,
+  artist_id   INTEGER REFERENCES artists(id) ON DELETE CASCADE,
+  type        VARCHAR(50) NOT NULL,
+  title       VARCHAR(255),
+  message     TEXT,
+  data        JSONB,
+  read        BOOLEAN DEFAULT false,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_artist ON notifications(artist_id);
+
+-- Add linkedin_profile to artists if not exists
+ALTER TABLE artists ADD COLUMN IF NOT EXISTS linkedin_profile VARCHAR(255);
+ALTER TABLE artists ADD COLUMN IF NOT EXISTS spotify_artist_id VARCHAR(100);
+ALTER TABLE artists ADD COLUMN IF NOT EXISTS ig_access_token TEXT;
+ALTER TABLE artists ADD COLUMN IF NOT EXISTS ig_user_id VARCHAR(100);
+
+-- Media table (audio, video, images)
+CREATE TABLE IF NOT EXISTS media (
+  id          SERIAL PRIMARY KEY,
+  artist_id   INTEGER REFERENCES artists(id) ON DELETE CASCADE,
+  title       VARCHAR(255) NOT NULL,
+  description TEXT,
+  type        VARCHAR(20) NOT NULL,     -- 'audio' | 'video' | 'images'
+  filename    VARCHAR(500) NOT NULL,
+  url         VARCHAR(500) NOT NULL,
+  mimetype    VARCHAR(100),
+  size        BIGINT DEFAULT 0,
+  album_name  VARCHAR(255),
+  genre       VARCHAR(100),
+  play_count  INTEGER DEFAULT 0,
+  is_public   BOOLEAN DEFAULT true,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Portfolio / bio pad table
+CREATE TABLE IF NOT EXISTS portfolios (
+  id           SERIAL PRIMARY KEY,
+  artist_id    INTEGER REFERENCES artists(id) ON DELETE CASCADE UNIQUE,
+  bio          TEXT DEFAULT '',
+  short_bio    VARCHAR(500) DEFAULT '',
+  press_quote  VARCHAR(500) DEFAULT '',
+  influences   JSONB DEFAULT '[]',
+  achievements JSONB DEFAULT '[]',
+  links        JSONB DEFAULT '{}',
+  is_public    BOOLEAN DEFAULT true,
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_media_artist ON media(artist_id);
+CREATE INDEX IF NOT EXISTS idx_media_type ON media(type);
+CREATE INDEX IF NOT EXISTS idx_portfolios_artist ON portfolios(artist_id);
+
+-- Media table (audio, video, images)
+CREATE TABLE IF NOT EXISTS media (
+  id          SERIAL PRIMARY KEY,
+  artist_id   INTEGER REFERENCES artists(id) ON DELETE CASCADE,
+  title       VARCHAR(255) NOT NULL,
+  description TEXT,
+  type        VARCHAR(20) NOT NULL,     -- 'audio' | 'video' | 'images'
+  filename    VARCHAR(500) NOT NULL,
+  url         VARCHAR(500) NOT NULL,
+  mimetype    VARCHAR(100),
+  size        BIGINT DEFAULT 0,
+  album_name  VARCHAR(255),
+  genre       VARCHAR(100),
+  play_count  INTEGER DEFAULT 0,
+  is_public   BOOLEAN DEFAULT true,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Portfolio / bio pad table
+CREATE TABLE IF NOT EXISTS portfolios (
+  id           SERIAL PRIMARY KEY,
+  artist_id    INTEGER REFERENCES artists(id) ON DELETE CASCADE UNIQUE,
+  bio          TEXT DEFAULT '',
+  short_bio    VARCHAR(500) DEFAULT '',
+  press_quote  VARCHAR(500) DEFAULT '',
+  influences   JSONB DEFAULT '[]',
+  achievements JSONB DEFAULT '[]',
+  links        JSONB DEFAULT '{}',
+  is_public    BOOLEAN DEFAULT true,
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_media_artist ON media(artist_id);
+CREATE INDEX IF NOT EXISTS idx_media_type ON media(type);
+CREATE INDEX IF NOT EXISTS idx_portfolios_artist ON portfolios(artist_id);
