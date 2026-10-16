@@ -3,17 +3,34 @@ import { useNavigate } from 'react-router-dom'
 import { Zap, TrendingUp, Users, Music2, Star, ArrowRight, Play, Check } from 'lucide-react'
 import { useArtistStore } from '../store/ArtistStore'
 import api from '../services/api'
+import { isDemoMode, startDemoSession } from '../services/demo'
  
 export default function Landing() {
   const navigate = useNavigate()
   const { setArtist } = useArtistStore()
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', genre: '', handle: '' })
+
+  // In demo mode every "get started" button signs in as the sample artist
+  async function handleStart() {
+    if (!isDemoMode) return navigate('/dashboard')
+    setLoading(true)
+    try {
+      await startDemoSession()
+      navigate('/dashboard')
+    } finally {
+      setLoading(false)
+    }
+  }
  
   async function handleSignup(e) {
     e.preventDefault()
     setLoading(true)
     try {
+      if (isDemoMode) {
+        await startDemoSession()
+        return navigate('/dashboard')
+      }
       // Demo: auto-login for MVP
       const { data } = await api.post('/auth/register', form).catch(() => ({
         data: {
@@ -111,7 +128,7 @@ export default function Landing() {
               color: '#fff',
               fontFamily: 'Syne, sans-serif',
             }}
-            onClick={() => navigate('/dashboard')}
+            onClick={handleStart}
           >
             Get Started
           </button>
@@ -161,7 +178,7 @@ export default function Landing() {
  
           <div className="flex items-center gap-3 mb-10">
             <button
-              onClick={() => navigate('/dashboard')}
+              onClick={handleStart}
               className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold transition-all"
               style={{
                 background: 'linear-gradient(135deg, #FF6B00, #FF8C38)',
@@ -180,6 +197,7 @@ export default function Landing() {
               Start Free <ArrowRight size={15} />
             </button>
             <button
+              onClick={handleStart}
               className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm transition-all"
               style={{
                 border: '1px solid #2A2A3A',

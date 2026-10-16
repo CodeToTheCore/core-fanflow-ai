@@ -17,6 +17,7 @@ import { resumeService } from '../services/resumeService'
 import { aiService } from '../services/aiService'
 import SyncMatcher from '../components/SyncMatcher'
 import toast from 'react-hot-toast'
+import { isDemoMode } from '../services/demo'
  
 const mockGigs = [
   {
@@ -111,6 +112,12 @@ JP The Producer`
   }
  
   async function submitApplication() {
+    // Demo: applying would email a real venue, so show the cover letter but don't send it
+    if (isDemoMode) {
+      setCoverModal(false)
+      toast('Applying is turned off in the demo. In the real app this sends your cover letter and resume.', { icon: '🔒' })
+      return
+    }
     try {
       await gigService.autoApply(selected.id, 1).catch(() => {})
       setApplied((prev) => [...prev, selected.id])
@@ -124,6 +131,10 @@ JP The Producer`
   }
  
   async function runBulkApply() {
+    if (isDemoMode) {
+      toast('Auto-apply is turned off in the demo. In the real app it applies to every 85%+ match for you.', { icon: '🔒' })
+      return
+    }
     setAutoRunning(true)
     const topGigs = gigs.filter((g) => g.match >= 85 && !applied.includes(g.id))
     for (const gig of topGigs) {

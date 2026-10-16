@@ -3,6 +3,7 @@ const cors = require('cors')
 const helmet = require('helmet')
 const morgan = require('morgan')
 const path = require('path')
+const { isDemoMode, demoGuard } = require('./lib/demoMode')
 
 const app = express()
 
@@ -27,8 +28,15 @@ app.use(express.urlencoded({ extended: true }))
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')))
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'FanFlow AI API', version: '2.0.0' })
+  res.json({ status: 'ok', service: 'FanFlow AI API', version: '2.0.0', demo: isDemoMode })
 })
+
+// Demo mode: a demo login, and a guard in front of every API route
+// that would send, post, connect, upload, or apply. See DEMO_MODE.md.
+if (isDemoMode) {
+  app.use('/api/demo', require('./routes/demo'))
+  app.use('/api', demoGuard)
+}
 
 app.use('/api/auth',      require('./routes/auth'))
 app.use('/api/artist',    require('./routes/artist'))
@@ -45,14 +53,6 @@ app.use('/api/oracle',      require('./routes/oracle'))
 app.use('/api/leaderboard', require('./routes/leaderboard'))
 // app.use('/api/agent',     require('./routes/agent'))
 // app.use('/api/linkedin',  require('./routes/linkedin'))
-const albumsFile = require('./routes/albums');
-console.log('------------------------------------');
-console.log('DEBUG: albums.js content type:', typeof albumsFile);
-console.log('DEBUG: Is it a function/router?:', typeof albumsFile === 'function');
-console.log('------------------------------------');
-app.use('/api/albums', albumsFile);
-
-
 app.use('/api/albums',    require('./routes/albums'))
 
 app.use('*', (req, res) => {

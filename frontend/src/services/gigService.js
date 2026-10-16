@@ -4,7 +4,8 @@ export const gigService = {
   // Search for available gigs
   async searchGigs(filters = {}) {
     const { data } = await api.get('/gigs/search', { params: filters })
-    return data
+    // The database calls it match_score; the Gig Engine page reads gig.match
+    return data.map((gig) => ({ ...gig, match: gig.match ?? gig.match_score }))
   },
  
   // Get gig details

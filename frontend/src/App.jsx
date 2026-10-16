@@ -14,12 +14,14 @@ import MediaStudio from './pages/MediaStudio'
 import Portfolio from './pages/Portfolio'
 import Sidebar from './components/layout/Sidebar'
 import Navbar from './components/layout/Navbar'
+import DemoBanner from './components/layout/DemoBanner'
 
 function AppLayout({ children }) {
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#0A0A0F' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
+        <DemoBanner />
         <Navbar />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>

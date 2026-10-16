@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken')
 const { query } = require('../db')
+const { isDemoMode } = require('../lib/demoMode')
 
 async function authMiddleware(req, res, next) {
   try {
@@ -10,7 +11,8 @@ async function authMiddleware(req, res, next) {
 
     const token = authHeader.split(' ')[1]
 
-    if (process.env.NODE_ENV === 'development' && token.startsWith('demo-token-')) {
+    // Local development shortcut only. Never allowed in demo mode or production.
+    if (process.env.NODE_ENV === 'development' && !isDemoMode && token.startsWith('demo-token-')) {
       req.artist = {
         id: 1,
         uuid: 'demo-uuid',
