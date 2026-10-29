@@ -24,7 +24,10 @@ app.listen(PORT, async () => {
     // Demo: reload the sample data on every start, and never run the
     // scheduled jobs (they scan LinkedIn and send email as the real artist).
     console.log('🧪 DEMO MODE: sample data only, outside services blocked, scheduled jobs off\n')
+    // A fresh demo database has no tables yet, so create them before loading sample data
+    const { runMigrations } = require('./src/db/migrate')
     const { seedDemo } = require('./src/db/seedDemo')
+    await runMigrations()
     await seedDemo().catch((err) => console.error('Demo seed failed:', err.message))
     return
   }

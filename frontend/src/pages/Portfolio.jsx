@@ -3,7 +3,7 @@ import { Save, Eye, Plus, X, Link, Award } from 'lucide-react'
 import { FaTwitter, FaInstagram, FaSpotify, FaLinkedin, FaSoundcloud } from 'react-icons/fa'
 import { Button, Badge } from '../components/ui/Button'
 import { portfolioService } from '../services/mediaService'
-import { useArtistStore } from '../store/artistStore'
+import { useArtistStore } from '../store/ArtistStore'
 import LiveEPK from '../components/LiveEPK'
 import toast from 'react-hot-toast'
 

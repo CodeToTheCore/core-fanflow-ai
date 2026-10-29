@@ -1,0 +1,7 @@
+# Never upload these to the host
+.env
+.env.*
+!.env.demo.example
+uploads/
+test.mp3
+node_modules/

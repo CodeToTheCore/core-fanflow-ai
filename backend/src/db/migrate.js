@@ -1,8 +1,9 @@
-require('dotenv').config({ path: '../.env' })
 const fs = require('fs')
 const path = require('path')
 const { pool } = require('./index')
 
+// Runs every .sql file in migrations/ in order. Safe to run again: the SQL uses
+// CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS.
 async function runMigrations() {
   console.log('🔄 Running database migrations...')
 
@@ -20,8 +21,13 @@ async function runMigrations() {
     }
   }
 
-  console.log('\n✅ Migrations complete!')
-  await pool.end()
+  console.log('✅ Migrations complete!')
 }
 
-runMigrations().catch(console.error)
+module.exports = { runMigrations }
+
+// `node src/db/migrate.js` runs them once and exits
+if (require.main === module) {
+  require('dotenv').config({ path: '../.env' })
+  runMigrations().then(() => pool.end()).catch(console.error)
+}

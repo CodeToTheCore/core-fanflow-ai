@@ -71,6 +71,14 @@ The database still works, because PostgreSQL doesn't use `http`.
 
 ---
 
+## Live demo
+
+- **Site:** https://fanflow-demo.vercel.app (Vercel, with `VITE_DEMO_MODE=true`)
+- **API:** https://fanflow-api-production.up.railway.app (Railway project `fanflow-demo`, its own PostgreSQL)
+- The API's only settings are `DEMO_MODE`, `NODE_ENV=demo`, a random `JWT_SECRET`, `DATABASE_URL`, and `FRONTEND_URL`. No API keys.
+- In demo mode the server creates its tables and reloads the sample data every time it starts.
+- `backend/.railwayignore` and `frontend/.vercelignore` keep `.env` files and `uploads/` from ever being uploaded.
+
 ## How to run it
 
 **Backend** (needs PostgreSQL):
